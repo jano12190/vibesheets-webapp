@@ -50,8 +50,8 @@ module "cognito" {
 
   # OAuth callback URLs
   callback_urls = [
-    "http://localhost:3000/callback",           # Local dev
-    "https://vibesheets.com/callback",          # Production
+    "http://localhost:3000/callback",  # Local dev
+    "https://vibesheets.com/callback", # Production
     "https://www.vibesheets.com/callback"
   ]
 
