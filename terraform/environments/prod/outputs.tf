@@ -56,3 +56,11 @@ output "lambda_invoke_arn" {
   description = "Invoke ARN of the Lambda function"
   value       = module.lambda.invoke_arn
 }
+
+# =============================================================================
+# API Gateway Outputs
+# =============================================================================
+output "api_endpoint" {
+  description = "API Gateway HTTP endpoint URL"
+  value       = module.api_gateway.api_endpoint
+}

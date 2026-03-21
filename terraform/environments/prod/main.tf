@@ -80,3 +80,23 @@ module "lambda" {
   projects_table_arn      = module.dynamodb.projects_table_arn
   log_retention_days      = 14
 }
+
+# =============================================================================
+# API Gateway - HTTP API with Cognito auth
+# =============================================================================
+module "api_gateway" {
+  source = "../../modules/api-gateway"
+
+  project_name         = "vibesheets"
+  lambda_function_name = module.lambda.function_name
+  lambda_invoke_arn    = module.lambda.invoke_arn
+  cognito_user_pool_id = module.cognito.user_pool_id
+  cognito_client_id    = module.cognito.web_client_id
+  log_retention_days   = 14
+
+  cors_origins = [
+    "http://localhost:3000",
+    "https://vibesheets.com",
+    "https://www.vibesheets.com"
+  ]
+}
