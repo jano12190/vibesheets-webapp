@@ -31,6 +31,19 @@ resource "aws_dynamodb_table" "time_entries" {
     projection_type = "ALL"
   }
 
+  # GSI for querying time entries by project (for project-based reporting)
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "project-index"
+    hash_key        = "project_id"
+    range_key       = "entry_id"
+    projection_type = "ALL"
+  }
+
   # Point-in-time recovery for data protection
   point_in_time_recovery {
     enabled = var.enable_point_in_time_recovery
@@ -43,3 +56,40 @@ resource "aws_dynamodb_table" "time_entries" {
     Name = "${var.project_name}-time-entries"
   }
 }
+
+# DynamoDB table for projects
+resource "aws_dynamodb_table" "projects" {
+  name         = "${var.project_name}-projects"
+  billing_mode = "PAY_PER_REQUEST"
+
+  # Primary key: user_id (partition) + project_id (sort)
+  # Each user has their own set of projects
+  hash_key  = "user_id"
+  range_key = "project_id"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "project_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = var.enable_point_in_time_recovery
+  }
+
+  tags = {
+    Name = "${var.project_name}-projects"
+  }
+}
+
+# Note: Additional attributes (name, client, hourly_rate) don't need to be
+# defined here - DynamoDB is schemaless. Only key attributes are required.
+# Your app will store:
+#   - name (String)
+#   - client (String)
+#   - hourly_rate (Number)
+#   - created_at, updated_at (String)
