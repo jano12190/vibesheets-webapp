@@ -36,7 +36,9 @@ def handler(event, context):
 def get_user_id(event):
     """Extract user ID from Cognito JWT claims."""
     try:
-        claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
+        authorizer = event.get("requestContext", {}).get("authorizer", {})
+        # HTTP API v2 puts claims directly under authorizer, not under jwt.claims
+        claims = authorizer.get("claims", {}) or authorizer.get("jwt", {}).get("claims", {})
         return claims.get("sub")
     except Exception:
         return None
