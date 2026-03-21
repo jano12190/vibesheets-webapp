@@ -60,6 +60,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   default_root_object = "index.html"
   price_class         = "PriceClass_100" # US, Canada, Europe only - cheapest
   comment             = "${var.project_name} frontend"
+  aliases             = var.domain_aliases
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -106,7 +107,10 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = var.certificate_arn == null
+    acm_certificate_arn            = var.certificate_arn
+    ssl_support_method             = var.certificate_arn != null ? "sni-only" : null
+    minimum_protocol_version       = var.certificate_arn != null ? "TLSv1.2_2021" : null
   }
 
   tags = {

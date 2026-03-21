@@ -102,11 +102,49 @@ module "api_gateway" {
 }
 
 # =============================================================================
+# DNS - Route53 + ACM Certificate
+# =============================================================================
+module "dns" {
+  source = "../../modules/dns"
+
+  domain_name = "vibesheets.com"
+}
+
+# =============================================================================
 # Frontend - S3 + CloudFront
 # =============================================================================
 module "frontend" {
   source = "../../modules/frontend"
 
-  project_name = "vibesheets"
-  environment  = var.environment
+  project_name    = "vibesheets"
+  environment     = var.environment
+  domain_aliases  = ["vibesheets.com", "www.vibesheets.com"]
+  certificate_arn = module.dns.certificate_arn
+}
+
+# =============================================================================
+# Route53 A Records - Point domain to CloudFront
+# =============================================================================
+resource "aws_route53_record" "apex" {
+  zone_id = module.dns.zone_id
+  name    = "vibesheets.com"
+  type    = "A"
+
+  alias {
+    name                   = module.frontend.cloudfront_domain_name
+    zone_id                = module.frontend.cloudfront_hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "www" {
+  zone_id = module.dns.zone_id
+  name    = "www.vibesheets.com"
+  type    = "A"
+
+  alias {
+    name                   = module.frontend.cloudfront_domain_name
+    zone_id                = module.frontend.cloudfront_hosted_zone_id
+    evaluate_target_health = false
+  }
 }

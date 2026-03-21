@@ -82,3 +82,16 @@ output "cloudfront_distribution_id" {
   description = "CloudFront distribution ID (for cache invalidation)"
   value       = module.frontend.cloudfront_distribution_id
 }
+
+# =============================================================================
+# DNS Outputs
+# =============================================================================
+output "route53_name_servers" {
+  description = "Name servers - update these at your domain registrar"
+  value       = module.dns.name_servers
+}
+
+output "domain_url" {
+  description = "Primary domain URL"
+  value       = "https://vibesheets.com"
+}
