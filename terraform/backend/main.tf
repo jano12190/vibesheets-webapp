@@ -197,7 +197,11 @@ resource "aws_iam_role_policy" "vibesheets_infra" {
         Effect = "Allow"
         Action = [
           "cognito-idp:CreateUserPool",
-          "cognito-idp:ListUserPools"
+          "cognito-idp:ListUserPools",
+          "cognito-idp:DescribeUserPoolDomain",
+          "cognito-idp:CreateUserPoolDomain",
+          "cognito-idp:DeleteUserPoolDomain",
+          "cognito-idp:UpdateUserPoolDomain"
         ]
         Resource = "*"
       },
