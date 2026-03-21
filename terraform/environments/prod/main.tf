@@ -100,3 +100,13 @@ module "api_gateway" {
     "https://www.vibesheets.com"
   ]
 }
+
+# =============================================================================
+# Frontend - S3 + CloudFront
+# =============================================================================
+module "frontend" {
+  source = "../../modules/frontend"
+
+  project_name = "vibesheets"
+  environment  = var.environment
+}
