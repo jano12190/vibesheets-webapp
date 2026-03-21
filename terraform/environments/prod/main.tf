@@ -38,3 +38,26 @@ module "dynamodb" {
   project_name                  = "vibesheets"
   enable_point_in_time_recovery = true
 }
+
+# =============================================================================
+# Cognito - User authentication
+# =============================================================================
+module "cognito" {
+  source = "../../modules/cognito"
+
+  project_name   = "vibesheets"
+  cognito_domain = "vibesheets-auth"
+
+  # OAuth callback URLs
+  callback_urls = [
+    "http://localhost:3000/callback",           # Local dev
+    "https://vibesheets.com/callback",          # Production
+    "https://www.vibesheets.com/callback"
+  ]
+
+  logout_urls = [
+    "http://localhost:3000",
+    "https://vibesheets.com",
+    "https://www.vibesheets.com"
+  ]
+}
