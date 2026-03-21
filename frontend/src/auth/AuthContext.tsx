@@ -115,12 +115,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return new Promise((resolve) => {
       const currentUser = userPool.getCurrentUser();
       if (!currentUser) {
+        console.error('getToken: No current user found');
         resolve(null);
         return;
       }
 
       currentUser.getSession((err: Error | null, session: CognitoUserSession | null) => {
-        if (err || !session) {
+        if (err) {
+          console.error('getToken: Session error', err);
+          resolve(null);
+        } else if (!session) {
+          console.error('getToken: No session returned');
           resolve(null);
         } else {
           resolve(session.getIdToken().getJwtToken());

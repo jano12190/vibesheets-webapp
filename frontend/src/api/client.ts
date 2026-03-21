@@ -11,6 +11,10 @@ export function setTokenGetter(fn: GetTokenFn) {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getTokenFn ? await getTokenFn() : null;
 
+  if (!token) {
+    console.error('API request made without auth token - user may need to sign in again');
+  }
+
   const response = await fetch(`${config.apiEndpoint}${path}`, {
     ...options,
     headers: {
