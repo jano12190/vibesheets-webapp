@@ -88,10 +88,9 @@ resource "aws_lambda_function" "api" {
   timeout       = 30
   memory_size   = 256
 
-  # Source code - using a placeholder zip for now
-  # In production, this would be built and uploaded via CI/CD
-  filename         = data.archive_file.lambda_placeholder.output_path
-  source_code_hash = data.archive_file.lambda_placeholder.output_base64sha256
+  # Source code from lambda directory
+  filename         = data.archive_file.lambda_code.output_path
+  source_code_hash = data.archive_file.lambda_code.output_base64sha256
 
   environment {
     variables = {
@@ -110,25 +109,9 @@ resource "aws_lambda_function" "api" {
   }
 }
 
-# Placeholder Lambda code (creates a minimal zip)
-data "archive_file" "lambda_placeholder" {
+# Package Lambda code from lambda directory
+data "archive_file" "lambda_code" {
   type        = "zip"
-  output_path = "${path.module}/placeholder.zip"
-
-  source {
-    content  = <<-EOF
-      import json
-
-      def handler(event, context):
-          return {
-              "statusCode": 200,
-              "headers": {
-                  "Content-Type": "application/json",
-                  "Access-Control-Allow-Origin": "*"
-              },
-              "body": json.dumps({"message": "Vibesheets API"})
-          }
-    EOF
-    filename = "main.py"
-  }
+  source_dir  = "${path.root}/../../../lambda"
+  output_path = "${path.module}/lambda.zip"
 }
