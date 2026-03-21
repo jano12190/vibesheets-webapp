@@ -148,3 +148,15 @@ resource "aws_route53_record" "www" {
     evaluate_target_health = false
   }
 }
+
+# =============================================================================
+# Monitoring - CloudWatch Alarms
+# =============================================================================
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  project_name         = "vibesheets"
+  lambda_function_name = module.lambda.function_name
+  api_gateway_id       = module.api_gateway.api_id
+  api_gateway_stage    = module.api_gateway.stage_name
+}
