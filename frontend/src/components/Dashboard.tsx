@@ -11,6 +11,7 @@ export function Dashboard() {
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<TimeEntry | null>(null);
 
   useEffect(() => {
     setTokenGetter(getToken);
@@ -144,19 +145,39 @@ export function Dashboard() {
                     return (
                       <div
                         key={entry.entry_id}
-                        className="mb-2 p-2 rounded-lg text-sm"
+                        className="mb-2 p-2 rounded-lg text-sm cursor-pointer hover:ring-2 hover:ring-purple-300 group relative"
                         style={{ backgroundColor: project?.color + '20' }}
+                        onClick={() => {
+                          setSelectedEntry(entry);
+                          setSelectedDate(entry.date);
+                          setShowEntryModal(true);
+                        }}
                       >
                         <div className="font-medium text-gray-900">{project?.name || 'Unknown'}</div>
                         <div className="text-gray-600">{entry.hours}h</div>
                         {entry.description && (
                           <div className="text-gray-500 text-xs truncate">{entry.description}</div>
                         )}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (confirm('Delete this entry?')) {
+                              await entriesApi.delete(entry.entry_id);
+                              await loadData();
+                            }
+                          }}
+                          className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </div>
                     );
                   })}
                   <button
                     onClick={() => {
+                      setSelectedEntry(null);
                       setSelectedDate(date);
                       setShowEntryModal(true);
                     }}
@@ -181,11 +202,20 @@ export function Dashboard() {
         <EntryModal
           date={selectedDate!}
           projects={projects}
-          onClose={() => setShowEntryModal(false)}
+          entry={selectedEntry}
+          onClose={() => {
+            setShowEntryModal(false);
+            setSelectedEntry(null);
+          }}
           onSave={async (data) => {
-            await entriesApi.create(data);
+            if (selectedEntry) {
+              await entriesApi.update(selectedEntry.entry_id, data);
+            } else {
+              await entriesApi.create(data);
+            }
             await loadData();
             setShowEntryModal(false);
+            setSelectedEntry(null);
           }}
         />
       )}
@@ -199,6 +229,14 @@ export function Dashboard() {
             await projectsApi.create(data);
             await loadData();
           }}
+          onUpdate={async (id, data) => {
+            await projectsApi.update(id, data);
+            await loadData();
+          }}
+          onDelete={async (id) => {
+            await projectsApi.delete(id);
+            await loadData();
+          }}
         />
       )}
     </div>
@@ -209,17 +247,19 @@ export function Dashboard() {
 function EntryModal({
   date,
   projects,
+  entry,
   onClose,
   onSave
 }: {
   date: string;
   projects: Project[];
+  entry: TimeEntry | null;
   onClose: () => void;
   onSave: (data: { date: string; project_id: string; hours: number; description: string }) => Promise<void>;
 }) {
-  const [projectId, setProjectId] = useState(projects[0]?.project_id || '');
-  const [hours, setHours] = useState('');
-  const [description, setDescription] = useState('');
+  const [projectId, setProjectId] = useState(entry?.project_id || projects[0]?.project_id || '');
+  const [hours, setHours] = useState(entry?.hours?.toString() || '');
+  const [description, setDescription] = useState(entry?.description || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -240,7 +280,7 @@ function EntryModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl w-full max-w-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Time Entry</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">{entry ? 'Edit Time Entry' : 'Add Time Entry'}</h3>
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
             {error}
@@ -303,7 +343,7 @@ function EntryModal({
               disabled={loading || !projectId}
               className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
             >
-              {loading ? 'Saving...' : 'Save'}
+              {loading ? 'Saving...' : entry ? 'Update' : 'Save'}
             </button>
           </div>
         </form>
@@ -316,12 +356,17 @@ function EntryModal({
 function ProjectModal({
   projects,
   onClose,
-  onSave
+  onSave,
+  onUpdate,
+  onDelete
 }: {
   projects: Project[];
   onClose: () => void;
   onSave: (data: { name: string; client: string; hourly_rate: number; color: string }) => Promise<void>;
+  onUpdate: (id: string, data: { name: string; client: string; hourly_rate: number; color: string }) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [client, setClient] = useState('');
@@ -332,21 +377,51 @@ function ProjectModal({
 
   const colors = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
 
+  const startEdit = (project: Project) => {
+    setEditingProject(project);
+    setName(project.name);
+    setClient(project.client || '');
+    setHourlyRate(project.hourly_rate?.toString() || '');
+    setColor(project.color || '#8B5CF6');
+    setShowForm(true);
+  };
+
+  const resetForm = () => {
+    setEditingProject(null);
+    setName('');
+    setClient('');
+    setHourlyRate('');
+    setColor('#8B5CF6');
+    setShowForm(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      await onSave({ name, client, hourly_rate: parseFloat(hourlyRate) || 0, color });
-      setName('');
-      setClient('');
-      setHourlyRate('');
-      setShowForm(false);
+      const data = { name, client, hourly_rate: parseFloat(hourlyRate) || 0, color };
+      if (editingProject) {
+        await onUpdate(editingProject.project_id, data);
+      } else {
+        await onSave(data);
+      }
+      resetForm();
     } catch (err) {
       console.error('Failed to save project:', err);
       setError(err instanceof Error ? err.message : 'Failed to save project');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (project: Project) => {
+    if (confirm(`Delete "${project.name}"?`)) {
+      try {
+        await onDelete(project.project_id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete project');
+      }
     }
   };
 
@@ -364,7 +439,7 @@ function ProjectModal({
 
         <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
           {projects.map(p => (
-            <div key={p.project_id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50">
+            <div key={p.project_id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 group">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
               <div className="flex-1">
                 <div className="font-medium text-gray-900">{p.name}</div>
@@ -373,6 +448,24 @@ function ProjectModal({
               {p.hourly_rate > 0 && (
                 <div className="text-sm text-gray-500">${p.hourly_rate}/hr</div>
               )}
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                <button
+                  onClick={() => startEdit(p)}
+                  className="p-1 text-gray-400 hover:text-purple-600"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => handleDelete(p)}
+                  className="p-1 text-gray-400 hover:text-red-500"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
             </div>
           ))}
           {projects.length === 0 && (
@@ -424,7 +517,7 @@ function ProjectModal({
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
               >
                 Cancel
@@ -434,7 +527,7 @@ function ProjectModal({
                 disabled={loading}
                 className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
               >
-                {loading ? 'Saving...' : 'Add Project'}
+                {loading ? 'Saving...' : editingProject ? 'Update' : 'Add Project'}
               </button>
             </div>
           </form>
