@@ -12,7 +12,7 @@ table = dynamodb.Table(os.environ["PROJECTS_TABLE"])
 
 def handle_projects(event, user_id):
     """Route project requests to appropriate handler."""
-    method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    method = event.get("requestContext", {}).get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "")
     path_params = event.get("pathParameters") or {}
     project_id = path_params.get("id")
 

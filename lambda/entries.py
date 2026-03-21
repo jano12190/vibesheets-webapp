@@ -12,7 +12,7 @@ table = dynamodb.Table(os.environ["TIME_ENTRIES_TABLE"])
 
 def handle_entries(event, user_id):
     """Route entry requests to appropriate handler."""
-    method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    method = event.get("requestContext", {}).get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "")
     path_params = event.get("pathParameters") or {}
     entry_id = path_params.get("id")
 
