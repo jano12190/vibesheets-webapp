@@ -29,8 +29,12 @@ provider "aws" {
   }
 }
 
-# Modules will be added here as we build them
-# module "dynamodb" {
-#   source = "../../modules/dynamodb"
-#   ...
-# }
+# =============================================================================
+# DynamoDB - Time entries table
+# =============================================================================
+module "dynamodb" {
+  source = "../../modules/dynamodb"
+
+  project_name                  = "vibesheets"
+  enable_point_in_time_recovery = true
+}
