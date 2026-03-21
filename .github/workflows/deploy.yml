@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'terraform/**'
+      - 'lambda/**'
       - '.github/workflows/deploy.yml'
   pull_request:
     branches: [main]
     paths:
       - 'terraform/**'
+      - 'lambda/**'
   workflow_dispatch: # Allow manual triggering
 
 permissions:
