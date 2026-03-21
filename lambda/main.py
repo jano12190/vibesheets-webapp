@@ -13,7 +13,7 @@ def handler(event, context):
     logger.info(f"Event: {json.dumps(event)}")
 
     try:
-        path = event.get("rawPath", "")
+        path = event.get("rawPath") or event.get("path", "")
 
         # Get user ID from Cognito JWT claims
         user_id = get_user_id(event)
