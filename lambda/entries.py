@@ -4,6 +4,7 @@ import boto3
 from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
+from utils import response, decimal_to_float
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["TIME_ENTRIES_TABLE"])
@@ -34,14 +35,12 @@ def get_entries(user_id, event):
     end_date = query_params.get("end")
 
     try:
-        # Query entries for this user
         query_kwargs = {
             "KeyConditionExpression": "user_id = :uid",
             "ExpressionAttributeValues": {":uid": user_id},
-            "ScanIndexForward": False  # Most recent first
+            "ScanIndexForward": False
         }
 
-        # Add date range filter if provided
         if start_date and end_date:
             query_kwargs["FilterExpression"] = "#d BETWEEN :start AND :end"
             query_kwargs["ExpressionAttributeNames"] = {"#d": "date"}
@@ -62,13 +61,11 @@ def create_entry(user_id, event):
     try:
         body = json.loads(event.get("body", "{}"))
 
-        # Validate required fields
         required = ["date", "project_id", "hours"]
         missing = [f for f in required if f not in body]
         if missing:
             return response(400, {"error": f"Missing fields: {', '.join(missing)}"})
 
-        # Generate entry ID with timestamp for sorting
         entry_id = f"{body['date']}#{uuid4().hex[:8]}"
         now = datetime.utcnow().isoformat()
 
@@ -98,7 +95,6 @@ def update_entry(user_id, entry_id, event):
     try:
         body = json.loads(event.get("body", "{}"))
 
-        # Build update expression
         update_parts = []
         expr_names = {}
         expr_values = {":updated": datetime.utcnow().isoformat()}
@@ -144,34 +140,9 @@ def delete_entry(user_id, entry_id):
             Key={"user_id": user_id, "entry_id": entry_id},
             ConditionExpression="attribute_exists(user_id)"
         )
-        return response(204, {})
+        return response(204)
 
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         return response(404, {"error": "Entry not found"})
     except Exception as e:
         return response(500, {"error": str(e)})
-
-
-def decimal_to_float(obj):
-    """Convert Decimal types to float for JSON serialization."""
-    if isinstance(obj, dict):
-        return {k: decimal_to_float(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [decimal_to_float(v) for v in obj]
-    elif isinstance(obj, Decimal):
-        return float(obj)
-    return obj
-
-
-def response(status_code, body):
-    """Create API Gateway response."""
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
-        },
-        "body": json.dumps(body) if body else ""
-    }

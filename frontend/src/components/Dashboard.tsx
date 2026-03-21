@@ -221,12 +221,17 @@ function EntryModal({
   const [hours, setHours] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     try {
       await onSave({ date, project_id: projectId, hours: parseFloat(hours), description });
+    } catch (err) {
+      console.error('Failed to save entry:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save entry');
     } finally {
       setLoading(false);
     }
@@ -236,6 +241,11 @@ function EntryModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl w-full max-w-md p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Time Entry</h3>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -318,18 +328,23 @@ function ProjectModal({
   const [hourlyRate, setHourlyRate] = useState('');
   const [color, setColor] = useState('#8B5CF6');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const colors = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899'];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     try {
       await onSave({ name, client, hourly_rate: parseFloat(hourlyRate) || 0, color });
       setName('');
       setClient('');
       setHourlyRate('');
       setShowForm(false);
+    } catch (err) {
+      console.error('Failed to save project:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save project');
     } finally {
       setLoading(false);
     }
@@ -364,6 +379,12 @@ function ProjectModal({
             <p className="text-gray-500 text-center py-4">No projects yet</p>
           )}
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+            {error}
+          </div>
+        )}
 
         {showForm ? (
           <form onSubmit={handleSubmit} className="space-y-3 border-t pt-4">
