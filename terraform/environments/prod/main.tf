@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 
   backend "s3" {
@@ -60,4 +64,19 @@ module "cognito" {
     "https://vibesheets.com",
     "https://www.vibesheets.com"
   ]
+}
+
+# =============================================================================
+# Lambda - API functions
+# =============================================================================
+module "lambda" {
+  source = "../../modules/lambda"
+
+  project_name            = "vibesheets"
+  environment             = var.environment
+  time_entries_table_name = module.dynamodb.time_entries_table_name
+  time_entries_table_arn  = module.dynamodb.time_entries_table_arn
+  projects_table_name     = module.dynamodb.projects_table_name
+  projects_table_arn      = module.dynamodb.projects_table_arn
+  log_retention_days      = 14
 }
