@@ -10,6 +10,15 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["TIME_ENTRIES_TABLE"])
 
 
+def calculate_hours(start_time, end_time):
+    """Calculate hours between two ISO timestamps."""
+    start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+    end = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+    delta = end - start
+    hours = Decimal(str(round(delta.total_seconds() / 3600, 2)))
+    return hours
+
+
 def handle_entries(event, user_id):
     """Route entry requests to appropriate handler."""
     method = event.get("requestContext", {}).get("httpMethod") or event.get("requestContext", {}).get("http", {}).get("method", "")
@@ -57,14 +66,17 @@ def get_entries(user_id, event):
 
 
 def create_entry(user_id, event):
-    """Create a new time entry."""
+    """Create a new time entry. Supports both manual (hours) and clock-in (start_time)."""
     try:
         body = json.loads(event.get("body", "{}"))
 
-        required = ["date", "project_id", "hours"]
-        missing = [f for f in required if f not in body]
-        if missing:
-            return response(400, {"error": f"Missing fields: {', '.join(missing)}"})
+        # Must have date and project_id
+        if "date" not in body or "project_id" not in body:
+            return response(400, {"error": "Missing required fields: date, project_id"})
+
+        # Must have either hours (manual) or start_time (clock-in)
+        if "hours" not in body and "start_time" not in body:
+            return response(400, {"error": "Must provide either 'hours' or 'start_time'"})
 
         entry_id = f"{body['date']}#{uuid4().hex[:8]}"
         now = datetime.utcnow().isoformat()
@@ -74,11 +86,27 @@ def create_entry(user_id, event):
             "entry_id": entry_id,
             "date": body["date"],
             "project_id": body["project_id"],
-            "hours": Decimal(str(body["hours"])),
             "description": body.get("description", ""),
             "created_at": now,
             "updated_at": now
         }
+
+        # Clock-in mode: start_time provided
+        if "start_time" in body:
+            item["start_time"] = body["start_time"]
+            if "end_time" in body:
+                item["end_time"] = body["end_time"]
+                # Calculate hours from timestamps
+                item["hours"] = calculate_hours(body["start_time"], body["end_time"])
+            else:
+                item["hours"] = Decimal("0")  # Running timer
+        else:
+            # Manual mode: hours provided directly
+            item["hours"] = Decimal(str(body["hours"]))
+            if "start_time" in body:
+                item["start_time"] = body["start_time"]
+            if "end_time" in body:
+                item["end_time"] = body["end_time"]
 
         table.put_item(Item=item)
 
@@ -91,7 +119,7 @@ def create_entry(user_id, event):
 
 
 def update_entry(user_id, entry_id, event):
-    """Update an existing time entry."""
+    """Update an existing time entry. Supports clock-out by adding end_time."""
     try:
         body = json.loads(event.get("body", "{}"))
 
@@ -99,7 +127,7 @@ def update_entry(user_id, entry_id, event):
         expr_names = {}
         expr_values = {":updated": datetime.utcnow().isoformat()}
 
-        allowed_fields = ["date", "project_id", "hours", "description"]
+        allowed_fields = ["date", "project_id", "hours", "description", "start_time", "end_time"]
         for field in allowed_fields:
             if field in body:
                 update_parts.append(f"#{field} = :{field}")
@@ -108,6 +136,13 @@ def update_entry(user_id, entry_id, event):
                 if field == "hours":
                     value = Decimal(str(value))
                 expr_values[f":{field}"] = value
+
+        # If end_time provided with start_time, calculate hours
+        if "end_time" in body and "start_time" in body:
+            hours = calculate_hours(body["start_time"], body["end_time"])
+            update_parts.append("#hours = :hours")
+            expr_names["#hours"] = "hours"
+            expr_values[":hours"] = hours
 
         if not update_parts:
             return response(400, {"error": "No fields to update"})

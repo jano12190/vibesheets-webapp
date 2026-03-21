@@ -12,6 +12,47 @@ export function Dashboard() {
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<TimeEntry | null>(null);
+  const [showClockInModal, setShowClockInModal] = useState(false);
+  const [runningEntry, setRunningEntry] = useState<TimeEntry | null>(null);
+  const [elapsedTime, setElapsedTime] = useState('00:00:00');
+
+  // Load running entry from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('runningEntry');
+    if (saved) {
+      setRunningEntry(JSON.parse(saved));
+    }
+  }, []);
+
+  // Save running entry to localStorage
+  useEffect(() => {
+    if (runningEntry) {
+      localStorage.setItem('runningEntry', JSON.stringify(runningEntry));
+    } else {
+      localStorage.removeItem('runningEntry');
+    }
+  }, [runningEntry]);
+
+  // Update elapsed time every second when timer is running
+  useEffect(() => {
+    if (!runningEntry?.start_time) return;
+
+    const updateElapsed = () => {
+      const start = new Date(runningEntry.start_time!).getTime();
+      const now = Date.now();
+      const diff = Math.floor((now - start) / 1000);
+      const hours = Math.floor(diff / 3600);
+      const mins = Math.floor((diff % 3600) / 60);
+      const secs = diff % 60;
+      setElapsedTime(
+        `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      );
+    };
+
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [runningEntry]);
 
   useEffect(() => {
     setTokenGetter(getToken);
@@ -27,10 +68,38 @@ export function Dashboard() {
       ]);
       setEntries(entriesRes.entries);
       setProjects(projectsRes.projects.filter(p => p.active));
+
+      // Check for running entry (has start_time but no end_time)
+      const running = entriesRes.entries.find(e => e.start_time && !e.end_time);
+      if (running) {
+        setRunningEntry(running);
+      }
     } catch (err) {
       console.error('Failed to load data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleClockIn = async (projectId: string, description: string) => {
+    try {
+      const result = await entriesApi.clockIn(projectId, description);
+      setRunningEntry(result.entry);
+      setShowClockInModal(false);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to clock in:', err);
+    }
+  };
+
+  const handleClockOut = async () => {
+    if (!runningEntry?.start_time) return;
+    try {
+      await entriesApi.clockOut(runningEntry.entry_id, runningEntry.start_time, runningEntry.description);
+      setRunningEntry(null);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to clock out:', err);
     }
   };
 
@@ -57,6 +126,39 @@ export function Dashboard() {
             </div>
             <span className="text-xl font-semibold text-gray-900">Vibesheets</span>
           </div>
+
+          {/* Timer Section */}
+          <div className="flex items-center gap-4">
+            {runningEntry ? (
+              <div className="flex items-center gap-3 bg-purple-50 px-4 py-2 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="font-mono text-lg font-semibold text-purple-700">{elapsedTime}</span>
+                </div>
+                <span className="text-sm text-purple-600">
+                  {getProjectById(runningEntry.project_id)?.name || 'Unknown'}
+                </span>
+                <button
+                  onClick={handleClockOut}
+                  className="px-3 py-1 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600"
+                >
+                  Clock Out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowClockInModal(true)}
+                disabled={projects.length === 0}
+                className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Clock In
+              </button>
+            )}
+          </div>
+
           <div className="flex items-center gap-4">
             <button
               onClick={() => setShowProjectModal(true)}
@@ -142,19 +244,37 @@ export function Dashboard() {
                 >
                   {getEntriesForDay(date).map(entry => {
                     const project = getProjectById(entry.project_id);
+                    const isRunning = entry.start_time && !entry.end_time;
                     return (
                       <div
                         key={entry.entry_id}
-                        className="mb-2 p-2 rounded-lg text-sm cursor-pointer hover:ring-2 hover:ring-purple-300 group relative"
+                        className={`mb-2 p-2 rounded-lg text-sm cursor-pointer hover:ring-2 hover:ring-purple-300 group relative ${isRunning ? 'ring-2 ring-purple-400' : ''}`}
                         style={{ backgroundColor: project?.color + '20' }}
                         onClick={() => {
+                          if (isRunning) return; // Don't edit running entries
                           setSelectedEntry(entry);
                           setSelectedDate(entry.date);
                           setShowEntryModal(true);
                         }}
                       >
                         <div className="font-medium text-gray-900">{project?.name || 'Unknown'}</div>
-                        <div className="text-gray-600">{entry.hours}h</div>
+                        <div className="text-gray-600">
+                          {isRunning ? (
+                            <span className="flex items-center gap-1">
+                              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                              Running...
+                            </span>
+                          ) : (
+                            <>
+                              {entry.hours}h
+                              {entry.start_time && entry.end_time && (
+                                <span className="text-gray-400 text-xs ml-1">
+                                  ({formatTime(entry.start_time)} - {formatTime(entry.end_time)})
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
                         {entry.description && (
                           <div className="text-gray-500 text-xs truncate">{entry.description}</div>
                         )}
@@ -239,6 +359,15 @@ export function Dashboard() {
           }}
         />
       )}
+
+      {/* Clock In Modal */}
+      {showClockInModal && (
+        <ClockInModal
+          projects={projects}
+          onClose={() => setShowClockInModal(false)}
+          onClockIn={handleClockIn}
+        />
+      )}
     </div>
   );
 }
@@ -255,20 +384,45 @@ function EntryModal({
   projects: Project[];
   entry: TimeEntry | null;
   onClose: () => void;
-  onSave: (data: { date: string; project_id: string; hours: number; description: string }) => Promise<void>;
+  onSave: (data: { date: string; project_id: string; hours: number; description: string; start_time?: string; end_time?: string }) => Promise<void>;
 }) {
   const [projectId, setProjectId] = useState(entry?.project_id || projects[0]?.project_id || '');
   const [hours, setHours] = useState(entry?.hours?.toString() || '');
   const [description, setDescription] = useState(entry?.description || '');
+  const [startTime, setStartTime] = useState(entry?.start_time ? new Date(entry.start_time).toTimeString().slice(0, 5) : '');
+  const [endTime, setEndTime] = useState(entry?.end_time ? new Date(entry.end_time).toTimeString().slice(0, 5) : '');
+  const [useTimeRange, setUseTimeRange] = useState(!!(entry?.start_time && entry?.end_time));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Calculate hours from time range
+  useEffect(() => {
+    if (useTimeRange && startTime && endTime) {
+      const start = new Date(`${date}T${startTime}`);
+      const end = new Date(`${date}T${endTime}`);
+      const diffHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      if (diffHours > 0) {
+        setHours(diffHours.toFixed(2));
+      }
+    }
+  }, [useTimeRange, startTime, endTime, date]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      await onSave({ date, project_id: projectId, hours: parseFloat(hours), description });
+      const data: { date: string; project_id: string; hours: number; description: string; start_time?: string; end_time?: string } = {
+        date,
+        project_id: projectId,
+        hours: parseFloat(hours),
+        description
+      };
+      if (useTimeRange && startTime && endTime) {
+        data.start_time = new Date(`${date}T${startTime}`).toISOString();
+        data.end_time = new Date(`${date}T${endTime}`).toISOString();
+      }
+      await onSave(data);
     } catch (err) {
       console.error('Failed to save entry:', err);
       setError(err instanceof Error ? err.message : 'Failed to save entry');
@@ -309,18 +463,68 @@ function EntryModal({
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
-            <input
-              type="number"
-              step="0.25"
-              min="0"
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              required
-            />
+          {/* Toggle between hours or time range */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setUseTimeRange(false)}
+              className={`flex-1 py-2 text-sm rounded-lg border ${!useTimeRange ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-gray-300 text-gray-600'}`}
+            >
+              Enter Hours
+            </button>
+            <button
+              type="button"
+              onClick={() => setUseTimeRange(true)}
+              className={`flex-1 py-2 text-sm rounded-lg border ${useTimeRange ? 'bg-purple-100 border-purple-300 text-purple-700' : 'border-gray-300 text-gray-600'}`}
+            >
+              Enter Time Range
+            </button>
           </div>
+
+          {useTimeRange ? (
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hours</label>
+              <input
+                type="number"
+                step="0.25"
+                min="0"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              />
+            </div>
+          )}
+
+          {useTimeRange && hours && (
+            <div className="text-sm text-gray-500 text-center">
+              = {parseFloat(hours).toFixed(2)} hours
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
             <input
@@ -544,7 +748,94 @@ function ProjectModal({
   );
 }
 
+// Clock In Modal Component
+function ClockInModal({
+  projects,
+  onClose,
+  onClockIn
+}: {
+  projects: Project[];
+  onClose: () => void;
+  onClockIn: (projectId: string, description: string) => Promise<void>;
+}) {
+  const [projectId, setProjectId] = useState(projects[0]?.project_id || '');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await onClockIn(projectId, description);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl w-full max-w-md p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Clock In</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              required
+            >
+              {projects.map(p => (
+                <option key={p.project_id} value={p.project_id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What are you working on?"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !projectId}
+              className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? 'Starting...' : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Start Timer
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // Utility functions
+function formatTime(isoString: string): string {
+  const date = new Date(isoString);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
 function getWeekStart(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();

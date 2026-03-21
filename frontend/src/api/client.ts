@@ -40,6 +40,8 @@ export interface TimeEntry {
   project_id: string;
   hours: number;
   description: string;
+  start_time?: string;
+  end_time?: string;
   created_at: string;
   updated_at: string;
 }
@@ -47,8 +49,10 @@ export interface TimeEntry {
 export interface CreateEntryData {
   date: string;
   project_id: string;
-  hours: number;
+  hours?: number;
   description?: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 export const entriesApi = {
@@ -73,7 +77,32 @@ export const entriesApi = {
     }),
 
   delete: (id: string) =>
-    request<void>(`/entries/${id}`, { method: 'DELETE' })
+    request<void>(`/entries/${id}`, { method: 'DELETE' }),
+
+  clockIn: (projectId: string, description?: string) => {
+    const now = new Date();
+    return request<{ entry: TimeEntry }>('/entries', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: now.toISOString().split('T')[0],
+        project_id: projectId,
+        start_time: now.toISOString(),
+        description: description || ''
+      })
+    });
+  },
+
+  clockOut: (id: string, startTime: string, description?: string) => {
+    const now = new Date();
+    return request<{ entry: TimeEntry }>(`/entries/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        start_time: startTime,
+        end_time: now.toISOString(),
+        ...(description !== undefined && { description })
+      })
+    });
+  }
 };
 
 // Projects API
