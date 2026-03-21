@@ -1,0 +1,9 @@
+# Copy this file to terraform.tfvars and fill in your values
+# terraform.tfvars is gitignored for security
+
+aws_region        = "us-east-1"
+state_bucket_name = "vibesheets-terraform-state"
+lock_table_name   = "vibesheets-terraform-locks"
+
+# Your GitHub repository in format "owner/repo"
+github_repo = "your-username/vibesheets"
