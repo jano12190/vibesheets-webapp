@@ -251,7 +251,13 @@ resource "aws_iam_role_policy" "vibesheets_infra" {
           "s3:DeleteObject",
           "s3:GetBucketOwnershipControls",
           "s3:PutBucketOwnershipControls",
-          "s3:GetBucketLocation"
+          "s3:GetBucketLocation",
+          "s3:GetAccelerateConfiguration",
+          "s3:GetLifecycleConfiguration",
+          "s3:GetReplicationConfiguration",
+          "s3:GetBucketLogging",
+          "s3:GetBucketObjectLockConfiguration",
+          "s3:GetBucketRequestPayment"
         ]
         Resource = [
           "arn:aws:s3:::vibesheets-*",
