@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { entriesApi, projectsApi, type TimeEntry, type Project, setTokenGetter } from '../api/client';
+import { entriesApi, projectsApi, profileApi, type TimeEntry, type Project, type UserProfile, setTokenGetter } from '../api/client';
 
 export function Dashboard() {
   const { signOut, getToken } = useAuth();
@@ -13,8 +13,11 @@ export function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<TimeEntry | null>(null);
   const [showClockInModal, setShowClockInModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
   const [runningEntry, setRunningEntry] = useState<TimeEntry | null>(null);
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // Load running entry from localStorage on mount
   useEffect(() => {
@@ -62,12 +65,14 @@ export function Dashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [entriesRes, projectsRes] = await Promise.all([
+      const [entriesRes, projectsRes, profileRes] = await Promise.all([
         entriesApi.list(),
-        projectsApi.list()
+        projectsApi.list(),
+        profileApi.get()
       ]);
       setEntries(entriesRes.entries);
       setProjects(projectsRes.projects.filter(p => p.active));
+      setUserProfile(profileRes.profile);
 
       // Check for running entry (has start_time but no end_time)
       const running = entriesRes.entries.find(e => e.start_time && !e.end_time);
@@ -81,9 +86,9 @@ export function Dashboard() {
     }
   };
 
-  const handleClockIn = async (projectId: string, description: string) => {
+  const handleClockIn = async (projectId: string) => {
     try {
-      const result = await entriesApi.clockIn(projectId, description);
+      const result = await entriesApi.clockIn(projectId);
       setRunningEntry(result.entry);
       setShowClockInModal(false);
       await loadData();
@@ -95,7 +100,7 @@ export function Dashboard() {
   const handleClockOut = async () => {
     if (!runningEntry?.start_time) return;
     try {
-      await entriesApi.clockOut(runningEntry.entry_id, runningEntry.start_time, runningEntry.description);
+      await entriesApi.clockOut(runningEntry.entry_id, runningEntry.start_time);
       setRunningEntry(null);
       await loadData();
     } catch (err) {
@@ -104,7 +109,10 @@ export function Dashboard() {
   };
 
   const weekDays = getWeekDays(weekStart);
-  const totalHours = entries.reduce((sum, e) => sum + e.hours, 0);
+  const weekStartStr = formatDate(weekStart);
+  const weekEndStr = formatDate(addDays(weekStart, 6));
+  const weekEntries = entries.filter(e => e.date >= weekStartStr && e.date <= weekEndStr);
+  const totalHours = weekEntries.reduce((sum, e) => sum + e.hours, 0);
 
   const getEntriesForDay = (date: string) =>
     entries.filter(e => e.date === date);
@@ -115,20 +123,36 @@ export function Dashboard() {
   const getProjectById = (id: string) =>
     projects.find(p => p.project_id === id);
 
+  const getHoursByProject = () => {
+    const hoursByProject: { project: Project; hours: number }[] = [];
+    const projectHoursMap = new Map<string, number>();
+
+    weekEntries.forEach(entry => {
+      const current = projectHoursMap.get(entry.project_id) || 0;
+      projectHoursMap.set(entry.project_id, current + entry.hours);
+    });
+
+    projectHoursMap.forEach((hours, projectId) => {
+      const project = getProjectById(projectId);
+      if (project && hours > 0) {
+        hoursByProject.push({ project, hours });
+      }
+    });
+
+    return hoursByProject.sort((a, b) => b.hours - a.hours);
+  };
+
+  const hoursByProject = getHoursByProject();
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">V</span>
-            </div>
-            <span className="text-xl font-semibold text-gray-900">Vibesheets</span>
-          </div>
+        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center relative">
+          <span className="text-xl font-semibold text-purple-600">Vibesheets</span>
 
-          {/* Timer Section */}
-          <div className="flex items-center gap-4">
+          {/* Timer Section - Absolutely centered */}
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-4">
             {runningEntry ? (
               <div className="flex items-center gap-3 bg-purple-50 px-4 py-2 rounded-lg">
                 <div className="flex items-center gap-2">
@@ -161,10 +185,26 @@ export function Dashboard() {
 
           <div className="flex items-center gap-4">
             <button
+              onClick={() => setShowReportsModal(true)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+            >
+              Reports
+            </button>
+            <button
               onClick={() => setShowProjectModal(true)}
               className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
             >
               Projects
+            </button>
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 text-gray-500 hover:text-gray-700"
+              title="Settings"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
             </button>
             <button
               onClick={signOut}
@@ -200,18 +240,31 @@ export function Dashboard() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
-            <button
-              onClick={() => setWeekStart(getWeekStart(new Date()))}
-              className="px-3 py-1 text-sm text-purple-600 hover:bg-purple-50 rounded-lg"
-            >
-              Today
-            </button>
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-gray-900">{totalHours.toFixed(1)}h</div>
             <div className="text-sm text-gray-500">this week</div>
           </div>
         </div>
+
+        {/* Hours by project */}
+        {hoursByProject.length > 0 && (
+          <div className="flex flex-wrap gap-3 mb-6">
+            {hoursByProject.map(({ project, hours }) => (
+              <div
+                key={project.project_id}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg border border-gray-200"
+              >
+                <div
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: project.color }}
+                />
+                <span className="text-sm text-gray-700">{project.name}</span>
+                <span className="text-sm font-medium text-gray-900">{hours.toFixed(1)}h</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Week grid */}
         {loading ? (
@@ -222,25 +275,25 @@ export function Dashboard() {
               {weekDays.map(({ date, dayName, dayNum, isToday }) => (
                 <div
                   key={date}
-                  className={`p-4 text-center border-r border-gray-200 last:border-r-0 ${
-                    isToday ? 'bg-purple-50' : ''
-                  }`}
+                  className="p-4 flex justify-center border-r border-gray-200 last:border-r-0"
                 >
-                  <div className="text-xs text-gray-500 uppercase">{dayName}</div>
-                  <div className={`text-lg font-semibold ${isToday ? 'text-purple-600' : 'text-gray-900'}`}>
-                    {dayNum}
+                  <div className={`px-3 py-1 text-center rounded-full ${
+                    isToday ? 'border-2 border-purple-600' : ''
+                  }`}>
+                    <div className="text-xs uppercase text-gray-500">{dayName}</div>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {dayNum}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
             <div className="grid grid-cols-7 min-h-[300px]">
-              {weekDays.map(({ date, isToday }) => (
+              {weekDays.map(({ date }) => (
                 <div
                   key={date}
-                  className={`p-3 border-r border-gray-200 last:border-r-0 ${
-                    isToday ? 'bg-purple-50/50' : ''
-                  }`}
+                  className="p-3 border-r border-gray-200 last:border-r-0"
                 >
                   {getEntriesForDay(date).map(entry => {
                     const project = getProjectById(entry.project_id);
@@ -265,18 +318,13 @@ export function Dashboard() {
                               Running...
                             </span>
                           ) : (
-                            <>
-                              {entry.hours}h
-                              {entry.start_time && entry.end_time && (
-                                <span className="text-gray-400 text-xs ml-1">
-                                  ({formatTime(entry.start_time)} - {formatTime(entry.end_time)})
-                                </span>
-                              )}
-                            </>
+                            <>{entry.hours}h</>
                           )}
                         </div>
-                        {entry.description && (
-                          <div className="text-gray-500 text-xs truncate">{entry.description}</div>
+                        {!isRunning && entry.start_time && entry.end_time && (
+                          <div className="text-gray-400 text-xs">
+                            {formatTimeRange(entry.start_time, entry.end_time)}
+                          </div>
                         )}
                         <button
                           onClick={async (e) => {
@@ -368,6 +416,28 @@ export function Dashboard() {
           onClockIn={handleClockIn}
         />
       )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && userProfile && (
+        <SettingsModal
+          profile={userProfile}
+          onClose={() => setShowSettingsModal(false)}
+          onSave={async (data) => {
+            await profileApi.update(data);
+            await loadData();
+          }}
+        />
+      )}
+
+      {/* Reports Modal */}
+      {showReportsModal && (
+        <ReportsModal
+          entries={entries}
+          projects={projects}
+          userProfile={userProfile}
+          onClose={() => setShowReportsModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -384,11 +454,10 @@ function EntryModal({
   projects: Project[];
   entry: TimeEntry | null;
   onClose: () => void;
-  onSave: (data: { date: string; project_id: string; hours: number; description: string; start_time?: string; end_time?: string }) => Promise<void>;
+  onSave: (data: { date: string; project_id: string; hours: number; start_time?: string; end_time?: string }) => Promise<void>;
 }) {
   const [projectId, setProjectId] = useState(entry?.project_id || projects[0]?.project_id || '');
   const [hours, setHours] = useState(entry?.hours?.toString() || '');
-  const [description, setDescription] = useState(entry?.description || '');
   const [startTime, setStartTime] = useState(entry?.start_time ? new Date(entry.start_time).toTimeString().slice(0, 5) : '');
   const [endTime, setEndTime] = useState(entry?.end_time ? new Date(entry.end_time).toTimeString().slice(0, 5) : '');
   const [useTimeRange, setUseTimeRange] = useState(!!(entry?.start_time && entry?.end_time));
@@ -412,11 +481,10 @@ function EntryModal({
     setLoading(true);
     setError('');
     try {
-      const data: { date: string; project_id: string; hours: number; description: string; start_time?: string; end_time?: string } = {
+      const data: { date: string; project_id: string; hours: number; start_time?: string; end_time?: string } = {
         date,
         project_id: projectId,
-        hours: parseFloat(hours),
-        description
+        hours: parseFloat(hours)
       };
       if (useTimeRange && startTime && endTime) {
         data.start_time = new Date(`${date}T${startTime}`).toISOString();
@@ -525,15 +593,6 @@ function EntryModal({
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-          </div>
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -566,14 +625,15 @@ function ProjectModal({
 }: {
   projects: Project[];
   onClose: () => void;
-  onSave: (data: { name: string; client: string; hourly_rate: number; color: string }) => Promise<void>;
-  onUpdate: (id: string, data: { name: string; client: string; hourly_rate: number; color: string }) => Promise<void>;
+  onSave: (data: { name: string; client: string; client_address: string; hourly_rate: number; color: string }) => Promise<void>;
+  onUpdate: (id: string, data: { name: string; client: string; client_address: string; hourly_rate: number; color: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [client, setClient] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
   const [color, setColor] = useState('#8B5CF6');
   const [loading, setLoading] = useState(false);
@@ -585,6 +645,7 @@ function ProjectModal({
     setEditingProject(project);
     setName(project.name);
     setClient(project.client || '');
+    setClientAddress(project.client_address || '');
     setHourlyRate(project.hourly_rate?.toString() || '');
     setColor(project.color || '#8B5CF6');
     setShowForm(true);
@@ -594,6 +655,7 @@ function ProjectModal({
     setEditingProject(null);
     setName('');
     setClient('');
+    setClientAddress('');
     setHourlyRate('');
     setColor('#8B5CF6');
     setShowForm(false);
@@ -604,7 +666,7 @@ function ProjectModal({
     setLoading(true);
     setError('');
     try {
-      const data = { name, client, hourly_rate: parseFloat(hourlyRate) || 0, color };
+      const data = { name, client, client_address: clientAddress, hourly_rate: parseFloat(hourlyRate) || 0, color };
       if (editingProject) {
         await onUpdate(editingProject.project_id, data);
       } else {
@@ -642,7 +704,7 @@ function ProjectModal({
         </div>
 
         <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
-          {projects.map(p => (
+          {[...projects].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
             <div key={p.project_id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 group">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
               <div className="flex-1">
@@ -695,10 +757,17 @@ function ProjectModal({
             />
             <input
               type="text"
-              placeholder="Client (optional)"
+              placeholder="Client name (optional)"
               value={client}
               onChange={(e) => setClient(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <textarea
+              placeholder="Client address (optional, for invoices)"
+              value={clientAddress}
+              onChange={(e) => setClientAddress(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
             />
             <input
               type="number"
@@ -756,17 +825,16 @@ function ClockInModal({
 }: {
   projects: Project[];
   onClose: () => void;
-  onClockIn: (projectId: string, description: string) => Promise<void>;
+  onClockIn: (projectId: string) => Promise<void>;
 }) {
   const [projectId, setProjectId] = useState(projects[0]?.project_id || '');
-  const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await onClockIn(projectId, description);
+      await onClockIn(projectId);
     } finally {
       setLoading(false);
     }
@@ -789,16 +857,6 @@ function ClockInModal({
                 <option key={p.project_id} value={p.project_id}>{p.name}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What are you working on?"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
           </div>
           <div className="flex gap-3 pt-2">
             <button
@@ -831,9 +889,30 @@ function ClockInModal({
 }
 
 // Utility functions
-function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+function formatTimeRange(startIso: string, endIso: string): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  const startHour = start.getHours();
+  const endHour = end.getHours();
+  const sameAmPm = (startHour < 12) === (endHour < 12);
+
+  const startTime = start.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+  const endTime = end.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+
+  if (sameAmPm) {
+    // Remove AM/PM from start time when both are same period
+    const startWithoutPeriod = startTime.replace(/ AM| PM/, '');
+    return `${startWithoutPeriod} – ${endTime}`;
+  }
+  return `${startTime} – ${endTime}`;
 }
 
 function getWeekStart(date: Date): Date {
@@ -850,7 +929,10 @@ function addDays(date: Date, days: number): Date {
 }
 
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function getWeekDays(weekStart: Date) {
@@ -867,7 +949,16 @@ function getWeekDays(weekStart: Date) {
   });
 }
 
+function isCurrentWeek(weekStart: Date): boolean {
+  const currentWeekStart = getWeekStart(new Date());
+  return formatDate(weekStart) === formatDate(currentWeekStart);
+}
+
 function formatWeekRange(weekStart: Date): string {
+  if (isCurrentWeek(weekStart)) {
+    return 'This Week';
+  }
+
   const weekEnd = addDays(weekStart, 6);
   const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' });
   const endMonth = weekEnd.toLocaleDateString('en-US', { month: 'short' });
@@ -876,4 +967,584 @@ function formatWeekRange(weekStart: Date): string {
     return `${startMonth} ${weekStart.getDate()} - ${weekEnd.getDate()}, ${weekStart.getFullYear()}`;
   }
   return `${startMonth} ${weekStart.getDate()} - ${endMonth} ${weekEnd.getDate()}, ${weekStart.getFullYear()}`;
+}
+
+// Settings Modal Component
+function SettingsModal({
+  profile,
+  onClose,
+  onSave
+}: {
+  profile: UserProfile;
+  onClose: () => void;
+  onSave: (data: { name: string; address: string; email: string; phone: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState(profile.name || '');
+  const [address, setAddress] = useState(profile.address || '');
+  const [email, setEmail] = useState(profile.email || '');
+  const [phone, setPhone] = useState(profile.phone || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess(false);
+    try {
+      await onSave({ name, address, email, phone });
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl w-full max-w-md p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="text-sm text-gray-500 mb-4">Your information for invoices</p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+        )}
+        {success && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">Saved!</div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Your Name / Business Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="John Doe"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <textarea
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+              placeholder="123 Main St, City, State 12345"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="you@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              placeholder="(555) 123-4567"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              {loading ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Reports Modal Component
+function ReportsModal({
+  entries,
+  projects,
+  userProfile,
+  onClose
+}: {
+  entries: TimeEntry[];
+  projects: Project[];
+  userProfile: UserProfile | null;
+  onClose: () => void;
+}) {
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return formatDate(d);
+  });
+  const [endDate, setEndDate] = useState(() => formatDate(new Date()));
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    const sorted = [...projects].sort((a, b) => a.name.localeCompare(b.name));
+    return sorted[0]?.project_id || '';
+  });
+  const [showInvoice, setShowInvoice] = useState(false);
+
+  const getProjectById = (id: string) => projects.find(p => p.project_id === id);
+
+  const filteredEntries = entries.filter(e => {
+    const inDateRange = e.date >= startDate && e.date <= endDate;
+    const matchesProject = !selectedProjectId || e.project_id === selectedProjectId;
+    return inDateRange && matchesProject;
+  }).sort((a, b) => a.date.localeCompare(b.date));
+
+  const totalHours = filteredEntries.reduce((sum, e) => sum + e.hours, 0);
+  const totalAmount = filteredEntries.reduce((sum, e) => {
+    const project = getProjectById(e.project_id);
+    return sum + (e.hours * (project?.hourly_rate || 0));
+  }, 0);
+
+  const downloadCSV = () => {
+    const headers = ['Date', 'Project', 'Client', 'Hours', 'Rate', 'Amount'];
+    const rows = filteredEntries.map(e => {
+      const project = getProjectById(e.project_id);
+      const amount = e.hours * (project?.hourly_rate || 0);
+      return [
+        e.date,
+        project?.name || '',
+        project?.client || '',
+        e.hours.toFixed(2),
+        project?.hourly_rate?.toFixed(2) || '0.00',
+        amount.toFixed(2)
+      ];
+    });
+
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `timesheet-${startDate}-to-${endDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (showInvoice && selectedProjectId) {
+    const project = getProjectById(selectedProjectId);
+    return (
+      <InvoiceModal
+        entries={filteredEntries}
+        project={project!}
+        userProfile={userProfile}
+        startDate={startDate}
+        endDate={endDate}
+        onBack={() => setShowInvoice(false)}
+        onClose={onClose}
+      />
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Reports</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              {[...projects].sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                <option key={p.project_id} value={p.project_id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Summary */}
+        <div className="flex gap-6 mb-6 p-4 bg-gray-50 rounded-lg">
+          <div>
+            <div className="text-2xl font-bold text-gray-900">{totalHours.toFixed(1)}h</div>
+            <div className="text-sm text-gray-500">Total Hours</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-gray-900">${totalAmount.toFixed(2)}</div>
+            <div className="text-sm text-gray-500">Total Amount</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-gray-900">{filteredEntries.length}</div>
+            <div className="text-sm text-gray-500">Entries</div>
+          </div>
+        </div>
+
+        {/* Entries Table */}
+        <div className="border border-gray-200 rounded-lg overflow-hidden mb-6">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Date</th>
+                <th className="px-4 py-2 text-left font-medium text-gray-700">Project</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-700">Hours</th>
+                <th className="px-4 py-2 text-right font-medium text-gray-700">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {filteredEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-gray-500">No entries for this period</td>
+                </tr>
+              ) : (
+                filteredEntries.map(e => {
+                  const project = getProjectById(e.project_id);
+                  const amount = e.hours * (project?.hourly_rate || 0);
+                  return (
+                    <tr key={e.entry_id}>
+                      <td className="px-4 py-2 text-gray-900">{e.date}</td>
+                      <td className="px-4 py-2 text-gray-900">{project?.name || 'Unknown'}</td>
+                      <td className="px-4 py-2 text-right text-gray-900">{e.hours.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-right text-gray-900">${amount.toFixed(2)}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={downloadCSV}
+            disabled={filteredEntries.length === 0}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download CSV
+          </button>
+          <button
+            onClick={() => setShowInvoice(true)}
+            disabled={filteredEntries.length === 0}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Generate Invoice
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Invoice Modal Component
+function InvoiceModal({
+  entries,
+  project,
+  userProfile,
+  startDate,
+  endDate,
+  onBack,
+  onClose
+}: {
+  entries: TimeEntry[];
+  project: Project;
+  userProfile: UserProfile | null;
+  startDate: string;
+  endDate: string;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const [invoiceNumber, setInvoiceNumber] = useState(() => {
+    const now = new Date();
+    const date = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    return `INV-${date}-${time}`;
+  });
+  const [invoiceDate, setInvoiceDate] = useState(() => formatDate(new Date()));
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return formatDate(d);
+  });
+  const [notes, setNotes] = useState('');
+
+  const totalHours = entries.reduce((sum, e) => sum + e.hours, 0);
+  const totalAmount = totalHours * (project.hourly_rate || 0);
+
+  const downloadPDF = () => {
+    // Create printable HTML invoice
+    const invoiceHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice ${invoiceNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+          .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+          .invoice-title { font-size: 32px; font-weight: bold; color: #7c3aed; }
+          .info-section { margin-bottom: 30px; }
+          .info-section h3 { font-size: 12px; text-transform: uppercase; color: #666; margin-bottom: 8px; }
+          .info-section p { margin: 4px 0; }
+          .details { display: flex; gap: 60px; margin-bottom: 30px; }
+          .detail-item { }
+          .detail-label { font-size: 12px; color: #666; }
+          .detail-value { font-size: 16px; font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+          th { text-align: left; padding: 12px; background: #f3f4f6; border-bottom: 2px solid #e5e7eb; }
+          td { padding: 12px; border-bottom: 1px solid #e5e7eb; }
+          .text-right { text-align: right; }
+          .total-row { font-weight: bold; font-size: 18px; }
+          .notes { background: #f9fafb; padding: 20px; border-radius: 8px; margin-top: 30px; }
+          .notes-title { font-weight: 600; margin-bottom: 8px; }
+          @media print { body { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="invoice-title">INVOICE</div>
+          <div style="text-align: right;">
+            <div style="font-size: 24px; font-weight: bold;">${invoiceNumber}</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between;">
+          <div class="info-section">
+            <h3>From</h3>
+            <p><strong>${userProfile?.name || 'Your Name'}</strong></p>
+            <p style="white-space: pre-line;">${userProfile?.address || 'Your Address'}</p>
+            ${userProfile?.email ? `<p>${userProfile.email}</p>` : ''}
+            ${userProfile?.phone ? `<p>${userProfile.phone}</p>` : ''}
+          </div>
+          <div class="info-section">
+            <h3>Bill To</h3>
+            <p><strong>${project.client || 'Client Name'}</strong></p>
+            <p style="white-space: pre-line;">${project.client_address || ''}</p>
+          </div>
+        </div>
+
+        <div class="details">
+          <div class="detail-item">
+            <div class="detail-label">Invoice Date</div>
+            <div class="detail-value">${invoiceDate}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Due Date</div>
+            <div class="detail-value">${dueDate}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Project</div>
+            <div class="detail-value">${project.name}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="text-right">Hours</th>
+              <th class="text-right">Rate</th>
+              <th class="text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td>${e.date}</td>
+                <td class="text-right">${e.hours.toFixed(2)}</td>
+                <td class="text-right">$${(project.hourly_rate || 0).toFixed(2)}</td>
+                <td class="text-right">$${(e.hours * (project.hourly_rate || 0)).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+            <tr class="total-row">
+              <td></td>
+              <td class="text-right">${totalHours.toFixed(2)}</td>
+              <td></td>
+              <td class="text-right">$${totalAmount.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="text-align: right; font-size: 24px; font-weight: bold;">
+          Total Due: $${totalAmount.toFixed(2)}
+        </div>
+
+        ${notes ? `<div class="notes"><div class="notes-title">Notes</div><p>${notes}</p></div>` : ''}
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(invoiceHTML);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="text-gray-400 hover:text-gray-600">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h3 className="text-lg font-semibold text-gray-900">Generate Invoice</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Invoice Details */}
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label>
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Date</label>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+
+          {/* From / To */}
+          <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+            <div>
+              <div className="text-xs uppercase text-gray-500 mb-1">From</div>
+              <div className="font-medium">{userProfile?.name || 'Set in Settings'}</div>
+              <div className="text-sm text-gray-600 whitespace-pre-line">{userProfile?.address}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase text-gray-500 mb-1">Bill To</div>
+              <div className="font-medium">{project.client || 'No client'}</div>
+              <div className="text-sm text-gray-600 whitespace-pre-line">{project.client_address}</div>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-sm text-gray-700"><span className="text-gray-500">Project:</span> {project.name}</div>
+                <div className="text-sm text-gray-700"><span className="text-gray-500">Period:</span> {startDate} to {endDate}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600">{totalHours.toFixed(2)} hours @ ${(project.hourly_rate || 0).toFixed(2)}/hr</div>
+                <div className="text-2xl font-bold text-gray-900">${totalAmount.toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Payment terms, thank you message, etc."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onBack}
+              className="flex-1 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+            >
+              Back
+            </button>
+            <button
+              onClick={downloadPDF}
+              className="flex-1 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Print / Save PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
