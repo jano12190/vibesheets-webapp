@@ -78,7 +78,7 @@ def create_entry(user_id, event):
         if "hours" not in body and "start_time" not in body:
             return response(400, {"error": "Must provide either 'hours' or 'start_time'"})
 
-        entry_id = f"{body['date']}#{uuid4().hex[:8]}"
+        entry_id = f"{body['date']}_{uuid4().hex[:8]}"
         now = datetime.utcnow().isoformat()
 
         item = {
