@@ -104,7 +104,10 @@ export function Dashboard() {
   };
 
   const weekDays = getWeekDays(weekStart);
-  const totalHours = entries.reduce((sum, e) => sum + e.hours, 0);
+  const weekStartStr = formatDate(weekStart);
+  const weekEndStr = formatDate(addDays(weekStart, 6));
+  const weekEntries = entries.filter(e => e.date >= weekStartStr && e.date <= weekEndStr);
+  const totalHours = weekEntries.reduce((sum, e) => sum + e.hours, 0);
 
   const getEntriesForDay = (date: string) =>
     entries.filter(e => e.date === date);
