@@ -86,7 +86,6 @@ def create_entry(user_id, event):
             "entry_id": entry_id,
             "date": body["date"],
             "project_id": body["project_id"],
-            "description": body.get("description", ""),
             "created_at": now,
             "updated_at": now
         }
@@ -101,12 +100,7 @@ def create_entry(user_id, event):
             else:
                 item["hours"] = Decimal("0")  # Running timer
         else:
-            # Manual mode: hours provided directly
             item["hours"] = Decimal(str(body["hours"]))
-            if "start_time" in body:
-                item["start_time"] = body["start_time"]
-            if "end_time" in body:
-                item["end_time"] = body["end_time"]
 
         table.put_item(Item=item)
 
@@ -127,7 +121,14 @@ def update_entry(user_id, entry_id, event):
         expr_names = {}
         expr_values = {":updated": datetime.utcnow().isoformat()}
 
-        allowed_fields = ["date", "project_id", "hours", "description", "start_time", "end_time"]
+        # Calculate hours from timestamps if both provided
+        will_calculate_hours = "end_time" in body and "start_time" in body
+
+        allowed_fields = ["date", "project_id", "start_time", "end_time"]
+        # Only allow manual hours if not calculating from timestamps
+        if not will_calculate_hours:
+            allowed_fields.append("hours")
+
         for field in allowed_fields:
             if field in body:
                 update_parts.append(f"#{field} = :{field}")
@@ -137,8 +138,8 @@ def update_entry(user_id, entry_id, event):
                     value = Decimal(str(value))
                 expr_values[f":{field}"] = value
 
-        # If end_time provided with start_time, calculate hours
-        if "end_time" in body and "start_time" in body:
+        # Calculate hours from timestamps
+        if will_calculate_hours:
             hours = calculate_hours(body["start_time"], body["end_time"])
             update_parts.append("#hours = :hours")
             expr_names["#hours"] = "hours"
