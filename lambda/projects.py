@@ -60,6 +60,7 @@ def create_project(user_id, event):
             "project_id": project_id,
             "name": body["name"],
             "client": body.get("client", ""),
+            "client_address": body.get("client_address", ""),
             "hourly_rate": Decimal(str(body.get("hourly_rate", 0))),
             "color": body.get("color", "#3B82F6"),
             "active": True,
@@ -86,7 +87,7 @@ def update_project(user_id, project_id, event):
         expr_names = {}
         expr_values = {":updated": datetime.utcnow().isoformat()}
 
-        allowed_fields = ["name", "client", "hourly_rate", "color", "active"]
+        allowed_fields = ["name", "client", "client_address", "hourly_rate", "color", "active"]
         for field in allowed_fields:
             if field in body:
                 update_parts.append(f"#{field} = :{field}")

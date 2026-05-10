@@ -102,6 +102,23 @@ resource "aws_apigatewayv2_route" "delete_project" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+# Profile routes
+resource "aws_apigatewayv2_route" "get_profile" {
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "GET /profile"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "put_profile" {
+  api_id             = aws_apigatewayv2_api.main.id
+  route_key          = "PUT /profile"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
 # Default stage with auto-deploy
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id

@@ -72,13 +72,15 @@ module "cognito" {
 module "lambda" {
   source = "../../modules/lambda"
 
-  project_name            = "vibesheets"
-  environment             = var.environment
-  time_entries_table_name = module.dynamodb.time_entries_table_name
-  time_entries_table_arn  = module.dynamodb.time_entries_table_arn
-  projects_table_name     = module.dynamodb.projects_table_name
-  projects_table_arn      = module.dynamodb.projects_table_arn
-  log_retention_days      = 14
+  project_name             = "vibesheets"
+  environment              = var.environment
+  time_entries_table_name  = module.dynamodb.time_entries_table_name
+  time_entries_table_arn   = module.dynamodb.time_entries_table_arn
+  projects_table_name      = module.dynamodb.projects_table_name
+  projects_table_arn       = module.dynamodb.projects_table_arn
+  user_profiles_table_name = module.dynamodb.user_profiles_table_name
+  user_profiles_table_arn  = module.dynamodb.user_profiles_table_arn
+  log_retention_days       = 14
 }
 
 # =============================================================================

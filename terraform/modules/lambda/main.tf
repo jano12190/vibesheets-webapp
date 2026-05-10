@@ -62,7 +62,8 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
           var.time_entries_table_arn,
           "${var.time_entries_table_arn}/index/*",
           var.projects_table_arn,
-          "${var.projects_table_arn}/index/*"
+          "${var.projects_table_arn}/index/*",
+          var.user_profiles_table_arn
         ]
       }
     ]
@@ -94,9 +95,10 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      TIME_ENTRIES_TABLE = var.time_entries_table_name
-      PROJECTS_TABLE     = var.projects_table_name
-      ENVIRONMENT        = var.environment
+      TIME_ENTRIES_TABLE   = var.time_entries_table_name
+      PROJECTS_TABLE       = var.projects_table_name
+      USER_PROFILES_TABLE  = var.user_profiles_table_name
+      ENVIRONMENT          = var.environment
     }
   }
 

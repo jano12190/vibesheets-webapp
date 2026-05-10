@@ -8,12 +8,7 @@ export function Landing({ onGetStarted }: LandingProps) {
       {/* Header */}
       <header className="border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">V</span>
-            </div>
-            <span className="text-xl font-semibold text-gray-900">Vibesheets</span>
-          </div>
+          <span className="text-xl font-semibold text-purple-600">Vibesheets</span>
           <button
             onClick={onGetStarted}
             className="px-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-700"
@@ -76,12 +71,6 @@ export function Landing({ onGetStarted }: LandingProps) {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-100 mt-16">
-        <div className="max-w-6xl mx-auto px-6 py-8 text-center text-gray-500 text-sm">
-          Built with vibes
-        </div>
-      </footer>
     </div>
   );
 }

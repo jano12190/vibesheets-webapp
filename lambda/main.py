@@ -2,6 +2,7 @@ import json
 import logging
 from entries import handle_entries
 from projects import handle_projects
+from profile import handle_profile
 from utils import response
 
 logger = logging.getLogger()
@@ -25,6 +26,8 @@ def handler(event, context):
             return handle_entries(event, user_id)
         elif "/projects" in path:
             return handle_projects(event, user_id)
+        elif "/profile" in path:
+            return handle_profile(event, user_id)
         else:
             return response(404, {"error": "Not found"})
 

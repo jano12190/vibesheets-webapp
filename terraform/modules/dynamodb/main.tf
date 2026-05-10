@@ -86,10 +86,28 @@ resource "aws_dynamodb_table" "projects" {
   }
 }
 
-# Note: Additional attributes (name, client, hourly_rate) don't need to be
-# defined here - DynamoDB is schemaless. Only key attributes are required.
-# Your app will store:
-#   - name (String)
-#   - client (String)
-#   - hourly_rate (Number)
-#   - created_at, updated_at (String)
+# DynamoDB table for user profiles
+resource "aws_dynamodb_table" "user_profiles" {
+  name         = "${var.project_name}-user-profiles"
+  billing_mode = "PAY_PER_REQUEST"
+
+  # Primary key: user_id only (one profile per user)
+  hash_key = "user_id"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = var.enable_point_in_time_recovery
+  }
+
+  tags = {
+    Name = "${var.project_name}-user-profiles"
+  }
+}
+
+# Note: Additional attributes don't need to be defined here - DynamoDB is schemaless.
+# User profiles will store: name, address, email, phone, created_at, updated_at
+# Projects will store: name, client, client_address, hourly_rate, color, active

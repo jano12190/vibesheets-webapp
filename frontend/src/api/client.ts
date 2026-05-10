@@ -39,7 +39,6 @@ export interface TimeEntry {
   date: string;
   project_id: string;
   hours: number;
-  description: string;
   start_time?: string;
   end_time?: string;
   created_at: string;
@@ -50,7 +49,6 @@ export interface CreateEntryData {
   date: string;
   project_id: string;
   hours?: number;
-  description?: string;
   start_time?: string;
   end_time?: string;
 }
@@ -71,35 +69,34 @@ export const entriesApi = {
     }),
 
   update: (id: string, data: Partial<CreateEntryData>) =>
-    request<{ entry: TimeEntry }>(`/entries/${id}`, {
+    request<{ entry: TimeEntry }>(`/entries/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify(data)
     }),
 
   delete: (id: string) =>
-    request<void>(`/entries/${id}`, { method: 'DELETE' }),
+    request<void>(`/entries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  clockIn: (projectId: string, description?: string) => {
+  clockIn: (projectId: string) => {
     const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return request<{ entry: TimeEntry }>('/entries', {
       method: 'POST',
       body: JSON.stringify({
-        date: now.toISOString().split('T')[0],
+        date: localDate,
         project_id: projectId,
-        start_time: now.toISOString(),
-        description: description || ''
+        start_time: now.toISOString()
       })
     });
   },
 
-  clockOut: (id: string, startTime: string, description?: string) => {
+  clockOut: (id: string, startTime: string) => {
     const now = new Date();
-    return request<{ entry: TimeEntry }>(`/entries/${id}`, {
+    return request<{ entry: TimeEntry }>(`/entries/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: JSON.stringify({
         start_time: startTime,
-        end_time: now.toISOString(),
-        ...(description !== undefined && { description })
+        end_time: now.toISOString()
       })
     });
   }
@@ -111,6 +108,7 @@ export interface Project {
   user_id: string;
   name: string;
   client: string;
+  client_address: string;
   hourly_rate: number;
   color: string;
   active: boolean;
@@ -121,6 +119,7 @@ export interface Project {
 export interface CreateProjectData {
   name: string;
   client?: string;
+  client_address?: string;
   hourly_rate?: number;
   color?: string;
 }
@@ -142,4 +141,32 @@ export const projectsApi = {
 
   delete: (id: string) =>
     request<{ project: Project }>(`/projects/${id}`, { method: 'DELETE' })
+};
+
+// Profile API
+export interface UserProfile {
+  user_id: string;
+  name: string;
+  address: string;
+  email: string;
+  phone: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UpdateProfileData {
+  name: string;
+  address: string;
+  email: string;
+  phone: string;
+}
+
+export const profileApi = {
+  get: () => request<{ profile: UserProfile }>('/profile'),
+
+  update: (data: UpdateProfileData) =>
+    request<{ profile: UserProfile }>('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
 };

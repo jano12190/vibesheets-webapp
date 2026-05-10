@@ -22,3 +22,13 @@ output "date_index_name" {
   description = "Name of the date GSI on time entries table"
   value       = "date-index"
 }
+
+output "user_profiles_table_name" {
+  description = "Name of the user profiles DynamoDB table"
+  value       = aws_dynamodb_table.user_profiles.name
+}
+
+output "user_profiles_table_arn" {
+  description = "ARN of the user profiles DynamoDB table"
+  value       = aws_dynamodb_table.user_profiles.arn
+}

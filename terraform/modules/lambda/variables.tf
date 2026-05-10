@@ -30,6 +30,16 @@ variable "projects_table_arn" {
   type        = string
 }
 
+variable "user_profiles_table_name" {
+  description = "Name of the DynamoDB user profiles table"
+  type        = string
+}
+
+variable "user_profiles_table_arn" {
+  description = "ARN of the DynamoDB user profiles table"
+  type        = string
+}
+
 variable "log_retention_days" {
   description = "CloudWatch log retention in days"
   type        = number
