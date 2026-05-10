@@ -31,3 +31,6 @@ terraform.rc
 # Environment
 .env
 .env.*
+
+# Stray build artifacts (terraform manages its own lambda.zip in modules/lambda/)
+/lambda.zip
